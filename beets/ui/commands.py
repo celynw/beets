@@ -1685,6 +1685,10 @@ def update_items(lib, query, album, move, pretend, fields, exclude_fields=None):
                     item.albumartist = old_item.albumartist
                     item._dirty.discard("albumartist")
 
+            old_item = lib.get_item(item.id)
+            if old_item.albumtype in item.albumtypes:
+                item.albumtype = old_item.albumtype
+
             # Check for and display changes.
             changed = ui.show_model_changes(item, fields=item_fields)
 
@@ -2292,6 +2296,9 @@ def write_items(lib, query, pretend, force):
                 "error reading {0}: {1}", displayable_path(item.path), exc
             )
             continue
+
+        if item.albumtype in clean_item.albumtypes:
+            clean_item.albumtype = item.albumtype
 
         # Check for and display changes.
         changed = ui.show_model_changes(
