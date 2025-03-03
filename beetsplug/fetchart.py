@@ -127,7 +127,7 @@ class Candidate:
 
         # Check aspect ratio.
         edge_diff = long_edge - short_edge
-        if plugin.enforce_ratio:
+        if plugin.enforce_ratio and not plugin.nonsquare:
             if plugin.margin_px:
                 if edge_diff > plugin.margin_px:
                     self._log.debug(
@@ -1246,6 +1246,8 @@ class FetchArtPlugin(plugins.BeetsPlugin, RequestMixin):
                 raise confuse.ConfigValueError()
             self.enforce_ratio = True
 
+        self.nonsquare = False
+
         cover_names = self.config["cover_names"].as_str_seq()
         self.cover_names = list(map(util.bytestring_path, cover_names))
         self.cautious = self.config["cautious"].get(bool)
@@ -1357,6 +1359,14 @@ class FetchArtPlugin(plugins.BeetsPlugin, RequestMixin):
             help="re-download art when already present",
         )
         cmd.parser.add_option(
+            "-n",
+            "--nonsquare",
+            dest="nonsquare",
+            action="store_true",
+            default=False,
+            help="Override `ratio` config and allow non-square",
+        )
+        cmd.parser.add_option(
             "-q",
             "--quiet",
             dest="quiet",
@@ -1366,6 +1376,7 @@ class FetchArtPlugin(plugins.BeetsPlugin, RequestMixin):
         )
 
         def func(lib, opts, args):
+            self.nonsquare = opts.nonsquare
             self.batch_fetch_art(
                 lib, lib.albums(ui.decargs(args)), opts.force, opts.quiet
             )
