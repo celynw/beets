@@ -1126,7 +1126,7 @@ class SmartArtistSort(FieldSort):
 
     def sort(self, objs: list[AnyModel]) -> list[AnyModel]:
         def key(o):
-            val = o[f"{self.field}_sort"] or o[self.field]
+            val = o.get(f"{self.field}_sort") or o.get(self.field) or ""
             return val.lower() if self.case_insensitive else val
 
         return sorted(objs, key=key, reverse=not self.ascending)
