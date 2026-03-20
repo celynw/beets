@@ -377,6 +377,14 @@ class ConfigSortTest(DummyDataTestCase):
         results = list(self.lib.albums())
         assert results[0].albumartist > results[1].albumartist
 
+    def test_artist_sort_on_albums_without_artist_sort_field(self):
+        results = list(self.lib.albums("artist+"))
+        assert [album.albumartist for album in results] == [
+            "Bar",
+            "Baz",
+            "Foo",
+        ]
+
 
 class CaseSensitivityTest(DummyDataTestCase):
     """If case_insensitive is false, lower-case values should be placed

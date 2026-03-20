@@ -19,6 +19,7 @@ import logging
 import os
 import pkgutil
 import sys
+from pathlib import Path
 from typing import ClassVar
 from unittest.mock import ANY, Mock, patch
 
@@ -590,3 +591,29 @@ class TestMusicBrainzPluginLoading:
             "musicbrainz.enabled' configuration option is deprecated"
             in caplog.text
         )
+
+
+class TestBundledPluginsPath:
+    @pytest.fixture(autouse=True)
+    def config(self):
+        _config = config
+        _config.sources = []
+        _config.read(user=False, defaults=True)
+        _config["pluginpath"] = []
+        return _config
+
+    def test_bundled_plugins_path_is_prepended(self):
+        import beetsplug
+
+        fake_external_path = "/tmp/external/beetsplug"
+        bundled_plugins = str(
+            Path(plugins.__file__).resolve().parent.parent / "beetsplug"
+        )
+
+        with patch.object(beetsplug, "__path__", [fake_external_path]):
+            plugins.get_plugin_names()
+
+            assert list(beetsplug.__path__)[:2] == [
+                bundled_plugins,
+                fake_external_path,
+            ]
