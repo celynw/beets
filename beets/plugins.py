@@ -405,6 +405,14 @@ def get_plugin_names() -> list[str]:
         str(Path(p).expanduser().absolute())
         for p in beets.config["pluginpath"].as_str_seq(split=False)
     ]
+
+    # Always include beets' bundled plugins path first. This ensures built-in
+    # plugins remain importable even when another installed distribution
+    # provides a non-namespace ``beetsplug`` package.
+    bundled_plugins = Path(__file__).resolve().parent.parent / PLUGIN_NAMESPACE
+    if bundled_plugins.is_dir():
+        paths.insert(0, str(bundled_plugins))
+
     log.debug("plugin paths: {}", paths)
 
     # Extend the `beetsplug` package to include the plugin paths.
