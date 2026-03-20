@@ -28,11 +28,11 @@ class ReadError(FileOperationError):
     """An error while reading a file (i.e. in `Item.read`)."""
 
     def __str__(self):
-        return f"error reading {super()}"
+        return f"error reading {super().__str__()}"
 
 
 class WriteError(FileOperationError):
     """An error while writing a file (i.e. in `Item.write`)."""
 
     def __str__(self):
-        return f"error writing {super()}"
+        return f"error writing {super().__str__()}"

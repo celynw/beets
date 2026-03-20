@@ -1293,6 +1293,16 @@ class ItemReadTest(unittest.TestCase):
         with pytest.raises(beets.library.ReadError):
             item.read("/thisfiledoesnotexist")
 
+    def test_read_error_str_includes_path_and_reason(self):
+        err = beets.library.ReadError("/tmp/missing.mp3", ValueError("boom"))
+        assert str(err) == "error reading /tmp/missing.mp3: boom"
+
+
+class FileOperationErrorStrTest(unittest.TestCase):
+    def test_write_error_str_includes_path_and_reason(self):
+        err = beets.library.WriteError("/tmp/target.mp3", ValueError("boom"))
+        assert str(err) == "error writing /tmp/target.mp3: boom"
+
 
 class FilesizeTest(BeetsTestCase):
     def test_filesize(self):
