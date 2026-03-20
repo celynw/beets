@@ -15,17 +15,46 @@
 
 """List missing tracks."""
 
+from __future__ import annotations
+
 from collections import defaultdict
+from typing import TYPE_CHECKING, ClassVar
 
-import musicbrainzngs
-from musicbrainzngs.musicbrainz import MusicBrainzError
+import requests
 
-from beets import config
-from beets.autotag import hooks
+from beets import config, metadata_plugins
 from beets.dbcore import types
 from beets.library import Item
 from beets.plugins import BeetsPlugin
-from beets.ui import Subcommand, decargs, print_
+from beets.ui import Subcommand, print_
+
+from ._utils.musicbrainz import MusicBrainzAPIMixin
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from beets.library import Album, Library
+
+# Valid MusicBrainz release types for filtering release groups
+VALID_RELEASE_TYPES = [
+    "nat",
+    "album",
+    "single",
+    "ep",
+    "broadcast",
+    "other",
+    "compilation",
+    "soundtrack",
+    "spokenword",
+    "interview",
+    "audiobook",
+    "live",
+    "remix",
+    "dj-mix",
+    "mixtape/street",
+]
+
+MB_ARTIST_QUERY = r"mb_albumartistid::^\w{8}-\w{4}-\w{4}-\w{4}-\w{12}$"
 
 
 def _missing_count(album):
@@ -83,10 +112,10 @@ def _item(track_info, album_info, album_id):
     )
 
 
-class MissingPlugin(BeetsPlugin):
+class MissingPlugin(MusicBrainzAPIMixin, BeetsPlugin):
     """List missing tracks"""
 
-    album_types = {
+    album_types: ClassVar[dict[str, types.Type]] = {
         "missing": types.INTEGER,
     }
 
@@ -98,6 +127,7 @@ class MissingPlugin(BeetsPlugin):
                 "count": False,
                 "total": False,
                 "album": False,
+                "release_types": ["album"],
             }
         )
 
@@ -123,7 +153,19 @@ class MissingPlugin(BeetsPlugin):
             "--album",
             dest="album",
             action="store_true",
-            help="show missing albums for artist instead of tracks",
+            help=(
+                "show missing album releases for artist instead of tracks; "
+                "Defaults to only releases of type 'album'"
+            ),
+        )
+        self._command.parser.add_option(
+            "--release-types",
+            action="append",
+            dest="release_types",
+            help=(
+                "comma-separated list of release types for missing albums "
+                f"(valid: {', '.join(VALID_RELEASE_TYPES)})"
+            ),
         )
         self._command.parser.add_format_option()
 
@@ -133,7 +175,7 @@ class MissingPlugin(BeetsPlugin):
             albms = self.config["album"].get()
 
             helper = self._missing_albums if albms else self._missing_tracks
-            helper(lib, decargs(args))
+            helper(lib, args)
 
         self._command.func = _miss
         return [self._command]
@@ -165,80 +207,78 @@ class MissingPlugin(BeetsPlugin):
                 for item in self._missing(album):
                     print_(format(item, fmt))
 
-    def _missing_albums(self, lib, query):
+    def _missing_albums(self, lib: Library, query: list[str]) -> None:
         """Print a listing of albums missing from each artist in the library
         matching query.
         """
-        total = self.config["total"].get()
+        query.append(MB_ARTIST_QUERY)
 
-        albums = lib.albums(query)
-        # build dict mapping artist to list of their albums in library
-        albums_by_artist = defaultdict(list)
-        for alb in albums:
-            artist = (alb["albumartist"], alb["mb_albumartistid"])
-            albums_by_artist[artist].append(alb)
+        # build dict mapping artist to set of their release group ids in library
+        album_ids_by_artist = defaultdict(set)
+        for album in lib.albums(query):
+            # TODO(@snejus): Some releases have different `albumartist` for the
+            # same `mb_albumartistid`. Since we're grouping by the combination
+            # of these two fields, we end up processing the same
+            # `mb_albumartistid` multiple times: calling MusicBrainz API and
+            # reporting the same set of missing albums. Instead, we should
+            # group by `mb_albumartistid` field only.
+            artist = (album["albumartist"], album["mb_albumartistid"])
+            album_ids_by_artist[artist].add(album["mb_releasegroupid"])
 
         total_missing = 0
-
-        # build dict mapping artist to list of all albums
-        for artist, albums in albums_by_artist.items():
-            if artist[1] is None or artist[1] == "":
-                albs_no_mbid = ["'" + a["album"] + "'" for a in albums]
-                self._log.info(
-                    "No musicbrainz ID for artist '{}' found in album(s) {}; "
-                    "skipping",
-                    artist[0],
-                    ", ".join(albs_no_mbid),
-                )
-                continue
-
+        release_types = []
+        for rt in self.config["release_types"].as_str_seq():
+            release_types.extend(rt.split(","))
+        calculating_total = self.config["total"].get()
+        for (artist, artist_id), album_ids in album_ids_by_artist.items():
             try:
-                resp = musicbrainzngs.browse_release_groups(artist=artist[1])
-                release_groups = resp["release-group-list"]
-            except MusicBrainzError as err:
+                resp = self.mb_api.browse_release_groups(
+                    artist=artist_id,
+                    type="|".join(release_types),
+                )
+            except requests.exceptions.RequestException:
                 self._log.info(
-                    "Couldn't fetch info for artist '{}' ({}) - '{}'",
-                    artist[0],
-                    artist[1],
-                    err,
+                    "Couldn't fetch info for artist '{}' ({})",
+                    artist,
+                    artist_id,
+                    exc_info=True,
                 )
                 continue
 
-            missing = []
-            present = []
-            for rg in release_groups:
-                missing.append(rg)
-                for alb in albums:
-                    if alb["mb_releasegroupid"] == rg["id"]:
-                        missing.remove(rg)
-                        present.append(rg)
-                        break
+            missing_titles = [
+                f"{artist} - {rg['title']}"
+                for rg in resp
+                if rg["id"] not in album_ids
+            ]
 
-            total_missing += len(missing)
-            if total:
-                continue
+            if calculating_total:
+                total_missing += len(missing_titles)
+            else:
+                for title in missing_titles:
+                    print(title)
 
-            missing_titles = {rg["title"] for rg in missing}
-
-            for release_title in missing_titles:
-                print_("{} - {}".format(artist[0], release_title))
-
-        if total:
+        if calculating_total:
             print(total_missing)
 
-    def _missing(self, album):
+    def _missing(self, album: Album) -> Iterator[Item]:
         """Query MusicBrainz to determine items missing from `album`."""
-        item_mbids = [x.mb_trackid for x in album.items()]
-        if len(list(album.items())) < album.albumtotal:
-            # fetch missing items
-            # TODO: Implement caching that without breaking other stuff
-            album_info = hooks.album_for_mbid(album.mb_albumid)
-            for track_info in getattr(album_info, "tracks", []):
+        if len(album.items()) == album.albumtotal:
+            return
+
+        # fetch missing items
+        # TODO: Implement caching that without breaking other stuff
+        data_source = album.get("data_source") or album.items()[0].get(
+            "data_source", "MusicBrainz"
+        )
+        if album_info := metadata_plugins.album_for_id(
+            album.mb_albumid, data_source
+        ):
+            item_mbids = {x.mb_trackid for x in album.items()}
+            for track_info in album_info.tracks:
                 if track_info.track_id not in item_mbids:
-                    item = _item(track_info, album_info, album.id)
                     self._log.debug(
-                        "track {0} in album {1}",
-                        track_info.track_id,
-                        album_info.album_id,
+                        "track {.track_id} in album {.album_id}",
+                        track_info,
+                        album_info,
                     )
-                    yield item
+                    yield _item(track_info, album_info, album.id)
