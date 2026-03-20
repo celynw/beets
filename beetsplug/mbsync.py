@@ -78,9 +78,18 @@ class MBSyncPlugin(BeetsPlugin):
                 )
                 continue
 
+            data_source = item.get("data_source", "MusicBrainz")
+            if not metadata_plugins.get_metadata_source(data_source):
+                self._log.info(
+                    "Metadata source plugin {} is not loaded; cannot sync track {}",
+                    data_source,
+                    item,
+                )
+                continue
+
             if not (
                 track_info := metadata_plugins.track_for_id(
-                    track_id, item.get("data_source", "MusicBrainz")
+                    track_id, data_source
                 )
             ):
                 self._log.info(
@@ -106,6 +115,14 @@ class MBSyncPlugin(BeetsPlugin):
             data_source = album.get("data_source") or album.items()[0].get(
                 "data_source", "MusicBrainz"
             )
+            if not metadata_plugins.get_metadata_source(data_source):
+                self._log.info(
+                    "Metadata source plugin {} is not loaded; cannot sync album {}",
+                    data_source,
+                    album,
+                )
+                continue
+
             if not (
                 album_info := metadata_plugins.album_for_id(
                     album_id, data_source
