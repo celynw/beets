@@ -9,6 +9,25 @@ below!
 Unreleased
 ----------
 
+..
+    New features
+    ~~~~~~~~~~~~
+
+..
+    Bug fixes
+    ~~~~~~~~~
+
+..
+    For plugin developers
+    ~~~~~~~~~~~~~~~~~~~~~
+
+..
+    Other changes
+    ~~~~~~~~~~~~~
+
+2.8.0 (March 28, 2026)
+----------------------
+
 New features
 ~~~~~~~~~~~~
 
@@ -26,6 +45,8 @@ New features
   :bug:`2661`
 - :doc:`plugins/play`: Added ``-R``/``--randomize`` flag to shuffle the playlist
   order before passing it to the player.
+- :doc:`plugins/lyrics`: Add ``auto_ignore`` configuration option to skip
+  fetching lyrics for items matching a beets query during auto import.
 
 Bug fixes
 ~~~~~~~~~
@@ -56,6 +77,9 @@ Bug fixes
   **Migration**: This cannot be migrated automatically because of the field
   clash. If you use ``lastimport`` without ``mpdstats``, migrate manually with
   ``beet modify lastfm_play_count='$play_count'``.
+- :ref:`import-cmd` Simplify autotag metadata application for albums and
+  singletons, fixing null-overwrite handling and keeping singular/plural artist
+  metadata fields in sync during tagging.
 
 For plugin developers
 ~~~~~~~~~~~~~~~~~~~~~
@@ -66,9 +90,10 @@ For plugin developers
 - Colorisation, diff and layout utility helpers previously imported from
   :mod:`beets.ui` now live in :mod:`beets.util.color`, :mod:`beets.util.diff`,
   and :mod:`beets.util.layout`. Update external imports accordingly.
-- The ``tunelog`` logging helper that was exclusively available to the lastgenre
-  plugin is now usable througout beets and was renamed to ``extra_debug``.
-  Import it from the ``beets.logging`` module to use it.
+- The lastgenre ``tunelog`` helper was generalized into
+  :py:meth:`beets.logging.BeetsLogger.extra_debug`, which emits ``DEBUG``
+  messages only at verbosity level 3 or higher (for example ``-vvv``). Plugin
+  authors can use it via ``self._log.extra_debug(...)``.
 
 Other changes
 ~~~~~~~~~~~~~
@@ -88,6 +113,8 @@ Other changes
   management with pipx and move package manager instructions to the FAQ.
 - :doc:`guides/main`: Update quick installation section to reflect current
   installation guide structure.
+- :doc:`guides/installation`: Update pipx installation guide link
+- :doc:`contributing`: Update pipx installation guide link
 
 2.7.1 (March 08, 2026)
 ----------------------
