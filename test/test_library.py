@@ -70,9 +70,9 @@ class StoreTest(ItemInDBTestCase):
         assert self.lib.get_item(self.i.id).year != new_year
 
     def test_store_clears_dirty_flags(self):
-        self.i.composer = "tvp"
+        self.i.composers = ["tvp"]
         self.i.store()
-        assert "composer" not in self.i._dirty
+        assert "composers" not in self.i._dirty
 
     def test_store_album_cascades_flex_deletes(self):
         album = Album(flex1="Flex-1")
@@ -97,8 +97,8 @@ class AddTest(BeetsTestCase):
         new_grouping = (
             self.lib._connection()
             .execute(
-                "select grouping from items where composer = ?",
-                (self.i.composer,),
+                "select grouping from items where composers = ?",
+                (self.i._type("composers").to_sql(self.i.composers),),
             )
             .fetchone()["grouping"]
         )
@@ -112,8 +112,8 @@ class AddTest(BeetsTestCase):
         new_grouping = (
             self.lib._connection()
             .execute(
-                "select grouping from items where composer = ?",
-                (self.i.composer,),
+                "select grouping from items where composers = ?",
+                (i._type("composers").to_sql(i.composers),),
             )
             .fetchone()["grouping"]
         )
@@ -1302,6 +1302,17 @@ class FileOperationErrorStrTest(unittest.TestCase):
     def test_write_error_str_includes_path_and_reason(self):
         err = beets.library.WriteError("/tmp/target.mp3", ValueError("boom"))
         assert str(err) == "error writing /tmp/target.mp3: boom"
+
+
+class ItemReadGenreTest(BeetsTestCase):
+    def test_read_semicolon_delimited_genres(self):
+        """Semicolon-delimited genre tags are split into individual genres on read."""
+        path = self.create_mediafile_fixture()
+        mf = MediaFile(syspath(path))
+        mf.genres = ["Jazz; Funk; Soul"]
+        mf.save()
+        item = beets.library.Item.from_path(path)
+        assert item.genres == ["Jazz", "Funk", "Soul"]
 
 
 class FilesizeTest(BeetsTestCase):

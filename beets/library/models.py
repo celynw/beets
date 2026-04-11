@@ -5,6 +5,7 @@ import string
 import sys
 import time
 import unicodedata
+from contextlib import suppress
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
@@ -22,6 +23,7 @@ from beets.util import (
     samefile,
     syspath,
 )
+from beets.util.deprecation import maybe_replace_legacy_field
 from beets.util.functemplate import Template, template
 
 from .exceptions import FileOperationError, ReadError, WriteError
@@ -100,6 +102,8 @@ class LibModel(dbcore.Model["Library"]):
         cls, field: str, pattern: str, query_cls: FieldQueryType
     ) -> FieldQuery:
         """Get a `FieldQuery` for the given field on this model."""
+        field = maybe_replace_legacy_field(field, cls is Album)
+
         fast = field in cls.all_db_fields
         if field in cls.shared_db_fields:
             # This field exists in both tables, so SQLite will encounter
@@ -642,7 +646,8 @@ class Item(LibModel):
         "artists_sort": types.MULTI_VALUE_DSV,
         "artist_credit": types.STRING,
         "artists_credit": types.MULTI_VALUE_DSV,
-        "remixer": types.STRING,
+        "remixers": types.MULTI_VALUE_DSV,
+        "remixers_ids": types.MULTI_VALUE_DSV,
         "album": types.STRING,
         "albumartist": types.STRING,
         "albumartists": types.MULTI_VALUE_DSV,
@@ -655,13 +660,16 @@ class Item(LibModel):
         "discogs_albumid": types.INTEGER,
         "discogs_artistid": types.INTEGER,
         "discogs_labelid": types.INTEGER,
-        "lyricist": types.STRING,
-        "composer": types.STRING,
+        "lyricists": types.MULTI_VALUE_DSV,
+        "lyricists_ids": types.MULTI_VALUE_DSV,
+        "composers": types.MULTI_VALUE_DSV,
         "composer_sort": types.STRING,
+        "composers_ids": types.MULTI_VALUE_DSV,
         "work": types.STRING,
         "mb_workid": types.STRING,
         "work_disambig": types.STRING,
-        "arranger": types.STRING,
+        "arrangers": types.MULTI_VALUE_DSV,
+        "arrangers_ids": types.MULTI_VALUE_DSV,
         "grouping": types.STRING,
         "year": types.PaddedInt(4),
         "month": types.PaddedInt(2),
@@ -805,6 +813,7 @@ class Item(LibModel):
         getters = plugins.item_field_getters()
         getters["singleton"] = lambda i: i.album_id is None
         getters["filesize"] = Item.try_filesize  # In bytes.
+        getters["has_cover_art"] = Item.has_cover_art
         return getters
 
     def duplicates_query(self, fields: list[str]) -> dbcore.AndQuery:
@@ -1097,6 +1106,17 @@ class Item(LibModel):
         except (OSError, Exception) as exc:
             log.warning("could not get filesize: {}", exc)
             return 0
+
+    def has_cover_art(self):
+        """Check if item has embedded cover art.
+
+        Return True if images embedded in file, False otherwise.
+        If file unreadable or no images, return False.
+        """
+        with suppress(OSError):
+            return bool(MediaFile(self.path).images)
+
+        return False
 
     # Model methods.
 
